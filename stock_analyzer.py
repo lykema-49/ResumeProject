@@ -52,3 +52,66 @@ class stock:
 
         self.df.loc[buy_condition, 'MACD_Signal_Line'] = 'BUY'
         self.df.loc[sell_condition, 'MACD_Signal_Line'] = 'SELL'
+    
+    def getVerdict(self):
+    # Ensure indicators are computed
+        self.calculateMA()
+        self.calculateRSI()
+        self.calculate_macd()
+
+    # Mapping for signals
+        signal_map = {'BUY': 1, 'SELL': -1, 'HOLD': 0}
+
+    # Compute total score in one vectorized step
+        self.df['Final_Score'] = (
+            self.df['MA Signal'].map(signal_map) +
+            self.df['RSI Signal'].map(signal_map) +
+            self.df['MACD_Signal_Line'].map(signal_map)
+        )
+
+    # Default verdict
+        self.df['Final Signal'] = 'HOLD'
+
+    # Apply conditions
+        self.df.loc[self.df['Final_Score'] >= 2, 'Final Signal'] = 'BUY'
+        self.df.loc[self.df['Final_Score'] <= -2, 'Final Signal'] = 'SELL'
+
+class backTrader(stock):
+    def __init__(self, ticker):
+        super().__init__(ticker)   # load df
+        self.balance = 10000       # starting capital
+        self.position = 0          # 0 = no stock, 1 = holding stock
+        self.buy_price = 0
+        self.equity_curve = []     # track equity over time
+
+    def doTrade(self):
+        # Generate signals
+        self.getVerdict()
+
+        for idx, row in self.df.iterrows():
+            signal = row['Final Signal']
+            price = row['Close']
+
+            # BUY CONDITION
+            if signal == "BUY" and self.position == 0:
+                self.position = 1
+                self.buy_price = price
+                # print(f"BUY @ {price}")
+
+            # SELL CONDITION
+            elif signal == "SELL" and self.position == 1:
+                self.position = 0
+                profit = price - self.buy_price
+                self.balance += profit
+                # print(f"SELL @ {price}, Profit = {profit:.2f}")
+
+            # Track equity (if holding, unrealized P/L is shown)
+            if self.position == 1:
+                current_equity = self.balance + (price - self.buy_price)
+            else:
+                current_equity = self.balance
+
+            self.equity_curve.append(current_equity)
+
+        return round(self.balance - 10000,2)
+
